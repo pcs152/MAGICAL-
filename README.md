@@ -213,4 +213,4 @@ case 列表在 `tools/sky130_adapter/sky130_case_registry.yaml`。
 
 ## GitHub 上传说明
 
-建议上传源码、轻量示例输入、配置、文档、wrapper 和测试脚本。不要上传 Sky130 PDK、`generated/`、GDS、log、Magic extraction 临时文件、build 产物。详见 `docs/sky130_adapter/github_upload_manifest.md`。
+无说明
