@@ -17,8 +17,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_DIR = Path(__file__).resolve().parent
 SHELL_PIPELINE = SCRIPT_DIR / "run_sky130_case_pipeline.sh"
 DEFAULT_SKY130A = Path(
-    "/home/to/.ciel/ciel/sky130/versions/"
-    "7b70722e33c03fcb5dabcf4d479fb0822d9251c9/sky130A"
+    Path.home()
+    / ".ciel/ciel/sky130/versions"
+    / "7b70722e33c03fcb5dabcf4d479fb0822d9251c9/sky130A"
 )
 
 
@@ -41,6 +42,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", type=Path, help="Existing MAGICAL JSON config.")
     parser.add_argument("--case-dir", type=Path, help="Existing or generated case directory.")
     parser.add_argument("--output-node", help="Optional output node for PEX summary focus.")
+    parser.add_argument(
+        "--net-role",
+        action="append",
+        default=[],
+        metavar="NET=ROLE",
+        help="Annotate a net role for parasitic_summary.json. May be repeated.",
+    )
     parser.add_argument("--docker-image", help="Override Docker image passed to shell pipeline.")
     parser.add_argument(
         "--keep-going",
@@ -167,6 +175,9 @@ def print_result(case_name: str, top_cell: str, out_dir: Path) -> None:
     print(f"RAW_EXTRACTED_NETLIST={out_dir / (top_cell + '_extracted.raw.spice')}")
     print(f"CONNECTIVITY_LVS_RESULT={out_dir / 'lvs_result_summary.md'}")
     print(f"PEX_SUMMARY={out_dir / 'pex_summary.md'}")
+    print(f"PARASITIC_SUMMARY_JSON={out_dir / 'parasitic_summary.json'}")
+    print(f"CIRCUIT_GRAPH_JSON={out_dir / 'circuit_graph.json'}")
+    print(f"SAMPLE_RECORD_JSON={out_dir / 'sample_record.json'}")
     print(f"KLAYOUT_GDS={final_gds}")
     print(f"SUMMARY_MD={summary}")
 
@@ -211,6 +222,8 @@ def main() -> int:
     env = os.environ.copy()
     if args.docker_image:
         env["DOCKER_IMAGE"] = args.docker_image
+    env.setdefault("SKY130A", str(DEFAULT_SKY130A))
+    env.setdefault("PDK_ROOT", str(Path(env["SKY130A"]).expanduser().resolve().parent))
     errors = preflight(env)
     if errors:
         for error in errors:
@@ -245,6 +258,8 @@ def main() -> int:
         cmd.extend(["--raw-netlist", rel_or_abs(raw_netlist)])
     if args.output_node:
         cmd.extend(["--output-node", args.output_node])
+    for net_role in args.net_role:
+        cmd.extend(["--net-role", net_role])
 
     print("RUN:", " ".join(cmd))
     status = subprocess.run(cmd, cwd=REPO_ROOT, env=env, check=False).returncode

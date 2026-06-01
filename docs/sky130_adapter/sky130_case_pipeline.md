@@ -126,6 +126,15 @@ parasitic-aware LVS. PEX information remains available through:
 
 ```text
 <out-dir>/pex_summary.md
+<out-dir>/parasitic_summary.json
+```
+
+The graph-learning V0 layer also records the pre-layout circuit graph and
+links it to the true Magic PEX labels:
+
+```text
+<out-dir>/circuit_graph.json
+<out-dir>/sample_record.json
 ```
 
 ## Summary Format
@@ -154,6 +163,8 @@ CONNECTIVITY_LVS_MATCH
 NET_RENAMES_USED
 PEX_CAPS
 PEX_TOTAL_CAP_FF
+CIRCUIT_GRAPH_JSON
+SAMPLE_RECORD_JSON
 KEY_OUTPUTS
 ```
 

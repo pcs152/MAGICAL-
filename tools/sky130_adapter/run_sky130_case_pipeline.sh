@@ -5,8 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DOCKER_IMAGE="${DOCKER_IMAGE:-jayl940712/magical:latest}"
 
-DEFAULT_SKY130A="/home/to/.ciel/ciel/sky130/versions/7b70722e33c03fcb5dabcf4d479fb0822d9251c9/sky130A"
+DEFAULT_PDK_ROOT="$HOME/.ciel/ciel/sky130/versions/7b70722e33c03fcb5dabcf4d479fb0822d9251c9"
+DEFAULT_SKY130A="$DEFAULT_PDK_ROOT/sky130A"
 SKY130A="${SKY130A:-$DEFAULT_SKY130A}"
+PDK_ROOT="${PDK_ROOT:-$(dirname "$SKY130A")}"
+export PDK_ROOT
 MAGICRC="$SKY130A/libs.tech/magic/sky130A.magicrc"
 NETGEN_SETUP="$SKY130A/libs.tech/netgen/sky130A_setup.tcl"
 
@@ -24,7 +27,8 @@ Usage:
     [--raw-netlist <file>] \
     [--convert-xschem yes|no] \
     [--case-name <name>] \
-    [--output-node <net>]
+    [--output-node <net>] \
+    [--net-role <net=role>]
 
 Paths may be absolute or relative to the repository root. File paths under
 --case-dir may be passed as basenames.
@@ -42,6 +46,7 @@ VSS_NET=""
 OUT_DIR_ARG=""
 CONVERT_XSCHEM="no"
 OUTPUT_NODE=""
+NET_ROLES=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -56,6 +61,7 @@ while [[ $# -gt 0 ]]; do
         --out-dir) OUT_DIR_ARG="$2"; shift 2 ;;
         --convert-xschem) CONVERT_XSCHEM="$2"; shift 2 ;;
         --output-node) OUTPUT_NODE="$2"; shift 2 ;;
+        --net-role) NET_ROLES+=("$2"); shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "error: unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
@@ -129,6 +135,9 @@ NETGEN_LOG="$OUT_DIR/netgen_lvs.log"
 NETGEN_REPORT="$OUT_DIR/netgen_lvs_report.out"
 LVS_RESULT_SUMMARY="$OUT_DIR/lvs_result_summary.md"
 PEX_SUMMARY="$OUT_DIR/pex_summary.md"
+PARASITIC_SUMMARY_JSON="$OUT_DIR/parasitic_summary.json"
+CIRCUIT_GRAPH_JSON="$OUT_DIR/circuit_graph.json"
+SAMPLE_RECORD_JSON="$OUT_DIR/sample_record.json"
 
 mkdir -p "$OUT_DIR"
 
@@ -187,6 +196,12 @@ if [[ "$CONVERT_XSCHEM" == "yes" ]]; then
         > "$CONVERT_LOG" 2>&1 || summary_fail "convert" "xschem-to-MAGICAL conversion failed; see $CONVERT_LOG"
 fi
 require_file "$MAGICAL_NETLIST" "setup"
+
+echo "RUN: build circuit graph from MAGICAL netlist"
+python3 "$SCRIPT_DIR/build_circuit_graph.py" \
+    --input "$MAGICAL_NETLIST" \
+    --output "$CIRCUIT_GRAPH_JSON" \
+    --top-cell "$TOP_CELL" >/dev/null || summary_fail "circuit_graph" "circuit graph generation failed"
 
 echo "RUN: check explicit power-net config"
 set +e
@@ -336,10 +351,16 @@ echo "RUN: summarize Magic PEX"
 pex_args=(
     --input "$RAW_EXTRACTED_COPY"
     --output "$PEX_SUMMARY"
+    --json-output "$PARASITIC_SUMMARY_JSON"
+    --case-name "$CASE_NAME"
+    --top-cell "$TOP_CELL"
 )
 if [[ -n "$OUTPUT_NODE" ]]; then
     pex_args+=(--output-node "$OUTPUT_NODE")
 fi
+for net_role in "${NET_ROLES[@]}"; do
+    pex_args+=(--net-role "$net_role")
+done
 python3 "$SCRIPT_DIR/summarize_magic_pex.py" "${pex_args[@]}" >/dev/null || summary_fail "pex_summary" "PEX summary failed"
 
 subckt_line="$(grep -E "^[[:space:]]*\\.subckt[[:space:]]+${MAGIC_CELL}" "$EXTRACTED_LVS" | head -n 1 || true)"
@@ -404,6 +425,29 @@ cat > "$SUMMARY" <<EOF
 - Netgen connectivity LVS report: \`$NETGEN_REPORT\`
 - LVS result summary: \`$LVS_RESULT_SUMMARY\`
 - PEX summary: \`$PEX_SUMMARY\`
+- Parasitic JSON summary: \`$PARASITIC_SUMMARY_JSON\`
+- Circuit graph JSON: \`$CIRCUIT_GRAPH_JSON\`
+EOF
+
+echo "RUN: build graph-learning sample record"
+python3 "$SCRIPT_DIR/build_sample_record.py" \
+    --case-name "$CASE_NAME" \
+    --top-cell "$TOP_CELL" \
+    --vdd "$VDD_NET" \
+    --vss "$VSS_NET" \
+    --case-dir "$CASE_DIR" \
+    --out-dir "$OUT_DIR" \
+    --source-netlist "$MAGICAL_NETLIST" \
+    --final-gds "$PINNED_SHAPES_GDS" \
+    --raw-extracted-netlist "$RAW_EXTRACTED_COPY" \
+    --circuit-graph "$CIRCUIT_GRAPH_JSON" \
+    --parasitic-summary "$PARASITIC_SUMMARY_JSON" \
+    --summary "$SUMMARY" \
+    --output "$SAMPLE_RECORD_JSON" \
+    --repo-root "$REPO_ROOT" >/dev/null || summary_fail "sample_record" "sample record generation failed"
+
+cat >> "$SUMMARY" <<EOF
+- Graph-learning sample record: \`$SAMPLE_RECORD_JSON\`
 EOF
 
 echo "Summary written: $SUMMARY"
@@ -416,5 +460,7 @@ echo "CONNECTIVITY_LVS_MATCH=$lvs_match"
 echo "NET_RENAMES_USED=$net_renames_used"
 echo "PEX_CAPS=$pex_caps"
 echo "PEX_TOTAL_CAP_FF=$pex_total"
+echo "CIRCUIT_GRAPH_JSON=$CIRCUIT_GRAPH_JSON"
+echo "SAMPLE_RECORD_JSON=$SAMPLE_RECORD_JSON"
 
 [[ "$lvs_match" == "yes" ]] || summary_fail "connectivity_lvs" "Connectivity LVS did not pass; see $LVS_RESULT_SUMMARY"
