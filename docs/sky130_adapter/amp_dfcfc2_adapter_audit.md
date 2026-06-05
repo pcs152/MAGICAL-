@@ -78,6 +78,33 @@ Rank1 conversion result:
 - Experimental `omit-with-report` policy converts 26 MOS instances and omits 2 MIM capacitors.
 - Rank1 MOS-only graph build result: 26 devices, 19 nets, 104 device-net edges.
 
+## Adapter Harness Decision
+
+Unsupported MIM capacitors are now represented as an adapter-level Harness decision, not only as a converter error message. The goal is to make future AnalogGym netlist conversions machine-checkable:
+
+```text
+conversion_report.json
+-> adapter_harness_decision.json
+-> decide whether this conversion is final-flow safe or only a smoke test
+```
+
+For `sky130_fd_pr__cap_mim_m3_1`, the current Harness policy is:
+
+- known category: `mim_capacitor`
+- smoke allowed: `true`
+- final flow allowed: `false`
+- recommended actions:
+  - `add_mim_cap_mapping`
+  - `use_black_box_macro`
+  - `block_final_pipeline_until_supported`
+
+Rank1 real-case decisions:
+
+- strict `block` conversion report -> `decision=block_final_flow`
+- experimental `omit-with-report` conversion report -> `decision=smoke_only_not_final`
+
+This means the MOS-only path remains useful for adapter smoke testing, but Harness must prevent it from being mistaken for a faithful layout or post-layout performance result.
+
 ## Interpretation
 
 `amp_dfcfc2` is a useful V2 target, but it is not ready to enter the existing MAGICAL Sky130 pipeline directly. The MOS devices use supported Sky130 1.8 V model names, and both the default vars file and the bounded Top-K rank1 vars can resolve the observed symbolic W/L/M expressions. The main adapter blocker is the MIM capacitor model `sky130_fd_pr__cap_mim_m3_1`, which is not in the current MAGICAL Sky130 support set. The next safe step is therefore MIM capacitor support or a black-box/macro strategy before adding the case to the main registry as a faithful circuit.
