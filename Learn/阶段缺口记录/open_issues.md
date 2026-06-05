@@ -54,4 +54,27 @@
 - 问题：若没有先 `source /home/qlf/IOT/scripts/env/magical_sky130_env.sh`，pipeline 会继续使用宿主机 `/usr/bin/magic` 8.3.105，仍可能在 `magic_drc` 阶段失败。
 - 为什么重要：后续进入 V2 跑 NMCF/DFCFC2 等新网表时，环境入口不一致会造成“同一代码有人能跑、有人不能跑”的问题。
 - 后续动作：后续应把快速开始文档和 pipeline preflight 明确为“先 source env 脚本”，或让 `run_sky130_case_pipeline.py` 自动提示当前 `magic` 路径和版本。
+- 处理结果：`run_sky130_case_pipeline.sh` 已改为主动 source `/home/qlf/IOT/scripts/env/magical_sky130_env.sh`，并在 setup 阶段检查 `Magic >= 8.3.411`。当前固定环境下 `magic` 走 `/home/qlf/IOT/scripts/env/bin/magic`，版本为 `8.3.483`。
+- 状态：resolved
+
+### 2026-06-06 V2 / Adapter 多工具语义一致性
+
+- 问题：DFCFC2 rank1 的 `sky130_fd_pr__cap_mim_m3_1 -> cfmom_2t` 代理映射已经可以进入 MAGICAL placement/routing，并且在固定 Sky130 环境下通过 Magic DRC、完成 Magic extraction 和 PEX；但 connectivity LVS 仍不通过。
+- 为什么重要：PDK 一致只是前提，adapter 还必须让 MAGICAL、Magic、Netgen、PEX、后仿工具共同认可“这是同一个电路”。如果只做到 MAGICAL 能画、Magic 能提 PEX，而 LVS 不能证明等价，那么该样本不能进入最终后仿闭环，也不能作为可信训练样本。
+- 已有证据：
+  - 环境：`scripts/env/check_magical_sky130_env.sh` 为 `RESULT=PASS`。
+  - Magic：固定 wrapper 版本 `8.3.483`。
+  - PDK hash：`7b70722e33c03fcb5dabcf4d479fb0822d9251c9`。
+  - DFCFC2 MIM proxy 后端结果：`DRC_COUNT=0`，PEX 电容数 `103`，总寄生电容 `865.01 fF`，`vout` 寄生电容 `363.423 fF`。
+  - Harness 结果：`reject_pipeline_artifact`，原因包含 `lvs_not_matched`。
+- 当前拆分出的子问题：
+  - MIM 代理语义：source connectivity netlist 中有 2 个 `cfmom_2t`，extracted netlist 中没有可匹配的对应元素。
+  - 地网/端口语义：source 顶层端口包含 `gnda`，extracted 顶层端口缺少 `gnda`。
+  - 器件展开语义：source 与 extracted 的器件/网络数量不同，MOS 多指/多段展开后的等价关系尚未被当前 LVS normalization 完整表达。
+  - 路由质量：MAGICAL route log 仍报告 `net31` failed/unresolved route warning，不能把 route GDS 当成最终版图。
+- 后续动作：
+  1. 先做 `gnda` 最小复现：确认 pin label、pin shape、ioPin、Magic extraction 是否正确保留 ground 顶层端口。
+  2. 再做 `cfmom_2t` 最小复现：构造只有 MOS + 一个 `cfmom_2t` 的小 case，判断 Magic/Netgen 能否抽取并 LVS 匹配该代理电容。
+  3. 最后处理 DFCFC2 多指/多段 MOS 等价：研究是否需要 source normalization、extracted normalization 或 Netgen setup/equivalence rule。
+  4. Harness 中继续保持分级判定：能进 MAGICAL、能过 DRC、能 PEX、能过 LVS、能进后仿/训练样本必须分开判断。
 - 状态：open
