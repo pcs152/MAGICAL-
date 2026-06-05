@@ -178,6 +178,8 @@ def print_result(case_name: str, top_cell: str, out_dir: Path) -> None:
     print(f"PARASITIC_SUMMARY_JSON={out_dir / 'parasitic_summary.json'}")
     print(f"CIRCUIT_GRAPH_JSON={out_dir / 'circuit_graph.json'}")
     print(f"SAMPLE_RECORD_JSON={out_dir / 'sample_record.json'}")
+    print(f"RISK_REPORT_JSON={out_dir / 'risk_report.json'}")
+    print(f"HARNESS_DECISION_JSON={out_dir / 'harness_decision.json'}")
     print(f"KLAYOUT_GDS={final_gds}")
     print(f"SUMMARY_MD={summary}")
 

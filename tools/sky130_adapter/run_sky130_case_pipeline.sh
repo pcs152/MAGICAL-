@@ -138,6 +138,8 @@ PEX_SUMMARY="$OUT_DIR/pex_summary.md"
 PARASITIC_SUMMARY_JSON="$OUT_DIR/parasitic_summary.json"
 CIRCUIT_GRAPH_JSON="$OUT_DIR/circuit_graph.json"
 SAMPLE_RECORD_JSON="$OUT_DIR/sample_record.json"
+RISK_REPORT_JSON="$OUT_DIR/risk_report.json"
+HARNESS_DECISION_JSON="$OUT_DIR/harness_decision.json"
 
 mkdir -p "$OUT_DIR"
 
@@ -446,8 +448,22 @@ python3 "$SCRIPT_DIR/build_sample_record.py" \
     --output "$SAMPLE_RECORD_JSON" \
     --repo-root "$REPO_ROOT" >/dev/null || summary_fail "sample_record" "sample record generation failed"
 
+echo "RUN: build V1 parasitic risk report"
+python3 "$SCRIPT_DIR/build_parasitic_risk_report.py" \
+    --circuit-graph "$CIRCUIT_GRAPH_JSON" \
+    --parasitic-summary "$PARASITIC_SUMMARY_JSON" \
+    --output "$RISK_REPORT_JSON" >/dev/null || summary_fail "risk_report" "V1 risk report generation failed"
+
+echo "RUN: build V1 Harness decision"
+python3 "$SCRIPT_DIR/build_harness_decision.py" \
+    --risk-report "$RISK_REPORT_JSON" \
+    --sample-record "$SAMPLE_RECORD_JSON" \
+    --output "$HARNESS_DECISION_JSON" >/dev/null || summary_fail "harness_decision" "V1 Harness decision generation failed"
+
 cat >> "$SUMMARY" <<EOF
 - Graph-learning sample record: \`$SAMPLE_RECORD_JSON\`
+- V1 parasitic risk report: \`$RISK_REPORT_JSON\`
+- V1 Harness decision: \`$HARNESS_DECISION_JSON\`
 EOF
 
 echo "Summary written: $SUMMARY"
@@ -462,5 +478,7 @@ echo "PEX_CAPS=$pex_caps"
 echo "PEX_TOTAL_CAP_FF=$pex_total"
 echo "CIRCUIT_GRAPH_JSON=$CIRCUIT_GRAPH_JSON"
 echo "SAMPLE_RECORD_JSON=$SAMPLE_RECORD_JSON"
+echo "RISK_REPORT_JSON=$RISK_REPORT_JSON"
+echo "HARNESS_DECISION_JSON=$HARNESS_DECISION_JSON"
 
 [[ "$lvs_match" == "yes" ]] || summary_fail "connectivity_lvs" "Connectivity LVS did not pass; see $LVS_RESULT_SUMMARY"

@@ -135,6 +135,8 @@ links it to the true Magic PEX labels:
 ```text
 <out-dir>/circuit_graph.json
 <out-dir>/sample_record.json
+<out-dir>/risk_report.json
+<out-dir>/harness_decision.json
 ```
 
 ## Summary Format
@@ -165,6 +167,8 @@ PEX_CAPS
 PEX_TOTAL_CAP_FF
 CIRCUIT_GRAPH_JSON
 SAMPLE_RECORD_JSON
+RISK_REPORT_JSON
+HARNESS_DECISION_JSON
 KEY_OUTPUTS
 ```
 
