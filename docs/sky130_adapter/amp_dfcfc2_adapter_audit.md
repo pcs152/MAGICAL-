@@ -131,13 +131,29 @@ MAGICAL placement/routing smoke result:
 - Route-log Harness status is `completed_with_route_warnings`.
 - The route log reports a failed/unresolved route net: `net31`.
 
-Full backend pipeline attempt:
+Fixed-env full backend pipeline attempt:
 
+- The pipeline now sources the fixed IOT Sky130 env before backend setup checks.
+- Magic path is forced through `/home/qlf/IOT/scripts/env/bin/magic`.
+- Magic version through the wrapper is `8.3.483`, which satisfies the `Magic >= 8.3.411` gate for the current sky130A techfile.
+- `scripts/env/check_magical_sky130_env.sh` reports `RESULT=PASS`.
 - MAGICAL, GDS remap, pin label, and pin shape stages completed.
-- Magic DRC failed before real DRC because local Magic `8.3.105` cannot parse the current sky130A techfile.
-- Environment diagnosis reports `magic_pdk_incompatibility`.
+- Magic DRC completed with `DRC_COUNT=0`.
+- Magic extraction and PEX summary completed.
+- PEX capacitor count: `103`.
+- Total listed parasitic capacitance: `865.01 fF`.
+- Output node `vout` capacitance estimate: `363.423 fF`.
+- Connectivity LVS still fails.
 
-The proxy mapping is documented in `docs/sky130_adapter/mim_cap_mapping_decision.md`. It is better than omitting the capacitor for adapter smoke, but it is still not a PDK-exact MIM implementation. Final flow remains blocked until the route warning is resolved and the mapped capacitor passes DRC/LVS/PEX validation in a compatible Magic/PDK environment, or is replaced by a proper Sky130 MIM strategy.
+The LVS failure is now a real backend/adapter issue rather than a Magic/PDK environment issue. Current observed blockers:
+
+- `cfmom_2t` proxy capacitor instances do not have matching extracted elements.
+- Source top net `gnda` does not appear in the extracted top port list.
+- Source/extracted device and net counts still differ after connectivity normalization.
+
+The pipeline also now preserves the detailed `summary.md` when late-stage LVS fails, so DRC and PEX evidence is not overwritten by the final failure status.
+
+The proxy mapping is documented in `docs/sky130_adapter/mim_cap_mapping_decision.md`. It is better than omitting the capacitor for adapter smoke, but it is still not a PDK-exact MIM implementation. Final flow remains blocked until the route warning is resolved and the mapped capacitor passes connectivity LVS in the fixed Magic/PDK environment, or is replaced by a proper Sky130 MIM strategy.
 
 ## Interpretation
 

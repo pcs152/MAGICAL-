@@ -3,13 +3,25 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DOCKER_IMAGE="${DOCKER_IMAGE:-jayl940712/magical:latest}"
+IOT_ROOT_CANDIDATE="$(cd "$REPO_ROOT/../.." && pwd)"
+IOT_ENV_SCRIPT="${IOT_ENV_SCRIPT:-$IOT_ROOT_CANDIDATE/scripts/env/magical_sky130_env.sh}"
+if [[ -f "$IOT_ENV_SCRIPT" ]]; then
+    # shellcheck source=/dev/null
+    source "$IOT_ENV_SCRIPT"
+fi
+IOT_ENV_BIN="${IOT_ENV_BIN:-$IOT_ROOT_CANDIDATE/scripts/env/bin}"
+if [[ -x "$IOT_ENV_BIN/magic" ]]; then
+    PATH="$IOT_ENV_BIN:$PATH"
+    export PATH
+fi
+DOCKER_IMAGE="${DOCKER_IMAGE:-${MAGICAL_DOCKER_IMAGE:-jayl940712/magical:latest}}"
 
 DEFAULT_PDK_ROOT="$HOME/.ciel/ciel/sky130/versions/7b70722e33c03fcb5dabcf4d479fb0822d9251c9"
 DEFAULT_SKY130A="$DEFAULT_PDK_ROOT/sky130A"
 SKY130A="${SKY130A:-$DEFAULT_SKY130A}"
 PDK_ROOT="${PDK_ROOT:-$(dirname "$SKY130A")}"
 export PDK_ROOT
+export SKY130A
 MAGICRC="$SKY130A/libs.tech/magic/sky130A.magicrc"
 NETGEN_SETUP="$SKY130A/libs.tech/netgen/sky130A_setup.tcl"
 
@@ -146,19 +158,32 @@ mkdir -p "$OUT_DIR"
 summary_fail() {
     local stage="$1"
     local message="$2"
-    {
-        echo "# Sky130 Case Pipeline Summary"
-        echo
-        echo "| Field | Value |"
-        echo "| --- | --- |"
-        echo "| CASE_NAME | $CASE_NAME |"
-        echo "| TOP_CELL | $TOP_CELL |"
-        echo "| VDD_NET | $VDD_NET |"
-        echo "| VSS_NET | $VSS_NET |"
-        echo "| STATUS | FAIL |"
-        echo "| FAILED_STAGE | $stage |"
-        echo "| MESSAGE | $message |"
-    } > "$SUMMARY"
+    if [[ -f "$SUMMARY" ]]; then
+        {
+            echo
+            echo "## FAILURE"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| STATUS | FAIL |"
+            echo "| FAILED_STAGE | $stage |"
+            echo "| MESSAGE | $message |"
+        } >> "$SUMMARY"
+    else
+        {
+            echo "# Sky130 Case Pipeline Summary"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| CASE_NAME | $CASE_NAME |"
+            echo "| TOP_CELL | $TOP_CELL |"
+            echo "| VDD_NET | $VDD_NET |"
+            echo "| VSS_NET | $VSS_NET |"
+            echo "| STATUS | FAIL |"
+            echo "| FAILED_STAGE | $stage |"
+            echo "| MESSAGE | $message |"
+        } > "$SUMMARY"
+    fi
     echo "FAIL[$stage]: $message" >&2
     exit 1
 }
@@ -167,8 +192,21 @@ require_file() {
     [[ -f "$1" ]] || summary_fail "$2" "required file not found: $1"
 }
 
+version_ge() {
+    local actual="$1"
+    local required="$2"
+    [[ "$(printf '%s\n%s\n' "$required" "$actual" | sort -V | head -n1)" == "$required" ]]
+}
+
 command -v docker >/dev/null 2>&1 || summary_fail "setup" "Docker is required for MAGICAL placement/routing stage."
 command -v magic >/dev/null 2>&1 || summary_fail "setup" "magic command not found in PATH"
+MAGIC_VERSION="$(timeout 60s magic --version 2>&1 | head -n1 | awk '{print $1}' || true)"
+if [[ -z "$MAGIC_VERSION" ]]; then
+    summary_fail "setup" "could not determine Magic version from $(command -v magic)"
+fi
+if ! version_ge "$MAGIC_VERSION" "8.3.411"; then
+    summary_fail "setup" "Magic version $MAGIC_VERSION at $(command -v magic) is older than required 8.3.411 for this sky130A techfile."
+fi
 
 NETGEN_CMD=""
 if command -v netgen >/dev/null 2>&1; then
@@ -360,6 +398,8 @@ pex_args=(
 if [[ -n "$OUTPUT_NODE" ]]; then
     pex_args+=(--output-node "$OUTPUT_NODE")
 fi
+pex_args+=(--net-role "$VDD_NET=power")
+pex_args+=(--net-role "$VSS_NET=ground")
 for net_role in "${NET_ROLES[@]}"; do
     pex_args+=(--net-role "$net_role")
 done

@@ -84,6 +84,10 @@ def source_to_connectivity(lines: list[str]) -> tuple[list[str], bool, bool]:
             output.append(line)
             saw_ends = True
             continue
+        if re.match(r"^[Cc]\S+\s+", stripped):
+            flattened = stripped.replace("(", " ").replace(")", " ")
+            output.append(" ".join(flattened.split()) + "\n")
+            continue
         if re.match(r"^[Mm]\S+\s+", stripped):
             flattened = stripped.replace("(", " ").replace(")", " ")
             tokens = flattened.split()

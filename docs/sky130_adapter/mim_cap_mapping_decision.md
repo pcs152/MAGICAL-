@@ -86,15 +86,29 @@ MAGICAL placement/routing smoke:
 
 This means MAGICAL can parse the mapped `cfmom_2t` proxy, generate capacitor layouts, place the full DFCFC2 case, and write a routed GDS. However, the routing log still contains a failed-net warning, so the result remains a smoke result rather than a final layout.
 
-Full backend pipeline attempt:
+Fixed-env backend pipeline attempt:
 
+- environment entry: `scripts/env/magical_sky130_env.sh`
+- Magic path: `/home/qlf/IOT/scripts/env/bin/magic`
+- Magic version through wrapper: `8.3.483`
+- sky130A PDK hash: `7b70722e33c03fcb5dabcf4d479fb0822d9251c9`
 - MAGICAL placement/routing: passed
 - GDS remap: passed
 - pin label/shape postprocess: passed
-- Magic DRC: failed before real DRC because local Magic is too old for the current sky130A techfile
-- local Magic: `8.3.105`
-- sky130A techfile requires: `Magic 8.3.411` or newer
-- environment diagnosis: `magic_pdk_incompatibility`
+- Magic DRC: passed with `DRC_COUNT=0`
+- Magic extraction and PEX summary: passed
+- PEX capacitor count: `103`
+- total listed parasitic capacitance: `865.01 fF`
+- output node `vout` capacitance estimate: `363.423 fF`
+- connectivity LVS: failed
+
+Current LVS blockers after the environment fix:
+
+- `cfmom_2t` proxy capacitors are present in the source connectivity netlist but do not have matching extracted elements.
+- `gnda` is present in the source top ports but is missing from the extracted top port list.
+- Source/extracted device and net counts still differ after connectivity normalization.
+
+This means the old Magic/PDK compatibility problem is fixed, and DRC/PEX can now run. The remaining blocker is a real adapter/layout/LVS problem, so the proxy remains non-final.
 
 Local artifacts:
 
@@ -102,6 +116,10 @@ Local artifacts:
 - `generated/analoggym_adapter_audits/amp_dfcfc2/bounded_topk_rank1/conversion_mim_proxy_report.json`
 - `generated/analoggym_adapter_audits/amp_dfcfc2/bounded_topk_rank1/adapter_harness_decision_mim_proxy.json`
 - `generated/analoggym_adapter_audits/amp_dfcfc2/mim_proxy_magical_smoke/magical_route_log_report.json`
-- `generated/analoggym_adapter_audits/amp_dfcfc2/mim_proxy_full_pipeline/environment_diagnosis.json`
+- `generated/analoggym_adapter_audits/amp_dfcfc2/mim_proxy_full_pipeline_fixed_env/summary.md`
+- `generated/analoggym_adapter_audits/amp_dfcfc2/mim_proxy_full_pipeline_fixed_env/pex_summary.md`
+- `generated/analoggym_adapter_audits/amp_dfcfc2/mim_proxy_full_pipeline_fixed_env/parasitic_summary.json`
+- `generated/analoggym_adapter_audits/amp_dfcfc2/mim_proxy_full_pipeline_fixed_env/lvs_result_summary.md`
+- `generated/analoggym_adapter_audits/amp_dfcfc2/mim_proxy_full_pipeline_fixed_env/harness_decision.json`
 
 These files are generated artifacts and are intentionally not committed.
