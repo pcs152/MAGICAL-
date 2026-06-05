@@ -124,7 +124,20 @@ Real rank1 result:
 - smoke allowed: `true`
 - final flow allowed: `false`
 
-The proxy mapping is documented in `docs/sky130_adapter/mim_cap_mapping_decision.md`. It is better than omitting the capacitor for adapter smoke, but it is still not a PDK-exact MIM implementation. Final flow remains blocked until the mapped capacitor passes DRC/LVS/PEX validation or is replaced by a proper Sky130 MIM strategy.
+MAGICAL placement/routing smoke result:
+
+- MAGICAL Docker run completed and wrote `Leung_DFCFC2_Pin_3.route.gds`.
+- MAGICAL generated capacitor PCell GDS files for both proxy capacitors.
+- Route-log Harness status is `completed_with_route_warnings`.
+- The route log reports a failed/unresolved route net: `net31`.
+
+Full backend pipeline attempt:
+
+- MAGICAL, GDS remap, pin label, and pin shape stages completed.
+- Magic DRC failed before real DRC because local Magic `8.3.105` cannot parse the current sky130A techfile.
+- Environment diagnosis reports `magic_pdk_incompatibility`.
+
+The proxy mapping is documented in `docs/sky130_adapter/mim_cap_mapping_decision.md`. It is better than omitting the capacitor for adapter smoke, but it is still not a PDK-exact MIM implementation. Final flow remains blocked until the route warning is resolved and the mapped capacitor passes DRC/LVS/PEX validation in a compatible Magic/PDK environment, or is replaced by a proper Sky130 MIM strategy.
 
 ## Interpretation
 

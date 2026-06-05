@@ -75,11 +75,33 @@ Local generated result:
 - omitted instances: 0
 - Harness decision: `mapped_requires_validation`
 
+MAGICAL placement/routing smoke:
+
+- Docker image: `jayl940712/magical:latest`
+- route GDS written: `true`
+- capacitor PCell GDS generated: `Leung_DFCFC2_Pin_3_C0.gds`, `Leung_DFCFC2_Pin_3_C1.gds`
+- route-log status: `completed_with_route_warnings`
+- failed route net detected by log Harness: `net31`
+- final flow allowed by route-log Harness: `false`
+
+This means MAGICAL can parse the mapped `cfmom_2t` proxy, generate capacitor layouts, place the full DFCFC2 case, and write a routed GDS. However, the routing log still contains a failed-net warning, so the result remains a smoke result rather than a final layout.
+
+Full backend pipeline attempt:
+
+- MAGICAL placement/routing: passed
+- GDS remap: passed
+- pin label/shape postprocess: passed
+- Magic DRC: failed before real DRC because local Magic is too old for the current sky130A techfile
+- local Magic: `8.3.105`
+- sky130A techfile requires: `Magic 8.3.411` or newer
+- environment diagnosis: `magic_pdk_incompatibility`
+
 Local artifacts:
 
 - `generated/analoggym_adapter_audits/amp_dfcfc2/bounded_topk_rank1/amp_dfcfc2_rank1_mim_proxy_magical.sp`
 - `generated/analoggym_adapter_audits/amp_dfcfc2/bounded_topk_rank1/conversion_mim_proxy_report.json`
 - `generated/analoggym_adapter_audits/amp_dfcfc2/bounded_topk_rank1/adapter_harness_decision_mim_proxy.json`
+- `generated/analoggym_adapter_audits/amp_dfcfc2/mim_proxy_magical_smoke/magical_route_log_report.json`
+- `generated/analoggym_adapter_audits/amp_dfcfc2/mim_proxy_full_pipeline/environment_diagnosis.json`
 
 These files are generated artifacts and are intentionally not committed.
-
