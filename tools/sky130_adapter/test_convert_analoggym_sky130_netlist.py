@@ -110,6 +110,50 @@ class ConvertAnalogGymSky130NetlistTest(unittest.TestCase):
         self.assertIn("sky130_fd_pr__cap_mim_m3_1", conversion_report)
         self.assertIn("omitted_instances", conversion_report)
 
+    def test_map_mim_policy_writes_cfmom_2t_proxy_and_records_mapping(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            input_netlist = root / "amp_dfcfc2.sp"
+            vars_path = root / "amp_dfcfc2_vars.spice"
+            output_netlist = root / "amp_dfcfc2_magical.sp"
+            report = root / "conversion_report.json"
+            input_netlist.write_text(AMP_DFCFC2_MINI_NETLIST, encoding="utf-8")
+            vars_path.write_text(AMP_DFCFC2_MINI_VARS, encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    "--input",
+                    str(input_netlist),
+                    "--vars",
+                    str(vars_path),
+                    "--output",
+                    str(output_netlist),
+                    "--report",
+                    str(report),
+                    "--unsupported-cap-policy",
+                    "map-mim-to-cfmom-2t",
+                ],
+                cwd=Path(__file__).resolve().parents[2],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            converted = output_netlist.read_text(encoding="utf-8")
+            conversion_report = report.read_text(encoding="utf-8")
+
+        self.assertIn("C0 (vout net050) cfmom_2t", converted)
+        self.assertIn("nr=10", converted)
+        self.assertIn("lr=30u", converted)
+        self.assertIn("w=70n s=70n stm=2 spm=6 multi=10 ftip=140n", converted)
+        self.assertIn('"mapped_instances"', conversion_report)
+        self.assertIn('"source_model": "sky130_fd_pr__cap_mim_m3_1"', conversion_report)
+        self.assertIn('"target_model": "cfmom_2t"', conversion_report)
+        self.assertIn('"mapping_status": "needs_validation"', conversion_report)
+
 
 if __name__ == "__main__":
     unittest.main()

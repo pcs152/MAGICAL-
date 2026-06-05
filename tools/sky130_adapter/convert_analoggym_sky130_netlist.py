@@ -25,7 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument(
         "--unsupported-cap-policy",
-        choices=("block", "omit-with-report"),
+        choices=("block", "omit-with-report", "map-mim-to-cfmom-2t"),
         default="block",
         help="How to handle unsupported MIM capacitors in the first adapter smoke path.",
     )
@@ -53,6 +53,17 @@ def resolve_required_float(inst: Instance, key: str, variables: dict[str, float]
     return float(result["value"])
 
 
+def resolve_optional_float(inst: Instance, keys: tuple[str, ...], variables: dict[str, float], default: float) -> float:
+    for key in keys:
+        if key not in inst.params:
+            continue
+        result = resolve_param(inst.params[key], variables)
+        if result["status"] != "resolved":
+            raise ValueError(f"{inst.name} parameter {key} unresolved: {inst.params[key]}")
+        return float(result["value"])
+    return default
+
+
 def convert_mos_instance(inst: Instance, variables: dict[str, float]) -> str:
     if len(inst.pins) != 4:
         raise ValueError(f"{inst.name} MOS instance must have 4 pins")
@@ -68,12 +79,55 @@ def convert_mos_instance(inst: Instance, variables: dict[str, float]) -> str:
     )
 
 
+def is_sky130_mim_cap(inst: Instance) -> bool:
+    return inst.model == "sky130_fd_pr__cap_mim_m3_1"
+
+
+def convert_mim_cap_instance(inst: Instance, variables: dict[str, float]) -> tuple[str, dict[str, Any]]:
+    if len(inst.pins) != 2:
+        raise ValueError(f"{inst.name} MIM capacitor instance must have 2 pins")
+    name = inst.name[1:] if inst.name.upper().startswith("X") else inst.name
+    nr = resolve_optional_float(inst, ("mf", "m", "multi"), variables, 1.0)
+    lr = resolve_optional_float(inst, ("l",), variables, 1.0)
+    multi = resolve_optional_float(inst, ("m", "multi", "mf"), variables, nr)
+    line = (
+        f"{name} ({' '.join(inst.pins)}) cfmom_2t "
+        f"nr={format_int(nr)} lr={format_um(lr)} w=70n s=70n stm=2 spm=6 "
+        f"multi={format_int(multi)} ftip=140n"
+    )
+    record = {
+        "name": inst.name,
+        "source_model": inst.model,
+        "target_model": "cfmom_2t",
+        "device_class": inst.device_class,
+        "mapping_status": "needs_validation",
+        "mapping_kind": "geometric_proxy",
+        "source_params": inst.params,
+        "mapped_params": {
+            "nr": format_int(nr),
+            "lr": format_um(lr),
+            "w": "70n",
+            "s": "70n",
+            "stm": "2",
+            "spm": "6",
+            "multi": format_int(multi),
+            "ftip": "140n",
+        },
+        "meaning": (
+            "AnalogGym Sky130 MIM capacitor is mapped to MAGICAL's generic cfmom_2t primitive "
+            "for adapter smoke testing. This is not yet a PDK-exact MIM replacement."
+        ),
+    }
+    return line, record
+
+
 def build_report(
     input_path: Path,
     output_path: Path,
     subckt_name: str,
     ports: list[str],
     converted: list[dict[str, Any]],
+    mapped: list[dict[str, Any]],
     omitted: list[dict[str, Any]],
     status: str,
 ) -> dict[str, Any]:
@@ -85,6 +139,7 @@ def build_report(
         "top_cell": subckt_name,
         "ports": ports,
         "converted_instances": converted,
+        "mapped_instances": mapped,
         "omitted_instances": omitted,
     }
 
@@ -99,12 +154,13 @@ def convert(
     subckt_name, ports, instances = parse_netlist(input_path.read_text(encoding="utf-8", errors="replace"))
     variables = parse_vars(vars_path.read_text(encoding="utf-8", errors="replace"))
     converted: list[dict[str, Any]] = []
+    mapped: list[dict[str, Any]] = []
     omitted: list[dict[str, Any]] = []
     output_lines = [f"subckt {subckt_name} {' '.join(ports)}"]
 
     unsupported = [inst for inst in instances if inst.model not in SUPPORTED_MAGICAL_MODELS]
     if unsupported and unsupported_cap_policy == "block":
-        report = build_report(input_path, output_path, subckt_name, ports, converted, [], "blocked")
+        report = build_report(input_path, output_path, subckt_name, ports, converted, [], [], "blocked")
         report["unsupported_instances"] = [
             {"name": inst.name, "model": inst.model, "device_class": inst.device_class} for inst in unsupported
         ]
@@ -119,13 +175,18 @@ def convert(
             output_lines.append(line)
             converted.append({"name": inst.name, "model": inst.model, "output": line})
             continue
+        if unsupported_cap_policy == "map-mim-to-cfmom-2t" and is_sky130_mim_cap(inst):
+            line, record = convert_mim_cap_instance(inst, variables)
+            output_lines.append(line)
+            mapped.append({**record, "output": line})
+            continue
         omitted.append({"name": inst.name, "model": inst.model, "device_class": inst.device_class, "reason": "unsupported_model"})
 
     output_lines.append(f"ends {subckt_name}")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("\n".join(output_lines) + "\n", encoding="utf-8")
 
-    report = build_report(input_path, output_path, subckt_name, ports, converted, omitted, "converted")
+    report = build_report(input_path, output_path, subckt_name, ports, converted, mapped, omitted, "converted")
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return report
@@ -142,6 +203,7 @@ def main() -> int:
     )
     print(f"status={report['status']}")
     print(f"converted_instances={len(report['converted_instances'])}")
+    print(f"mapped_instances={len(report['mapped_instances'])}")
     print(f"omitted_instances={len(report['omitted_instances'])}")
     print(f"output={args.output}")
     print(f"report={args.report}")

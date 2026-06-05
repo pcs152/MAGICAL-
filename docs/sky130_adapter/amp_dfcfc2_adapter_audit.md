@@ -105,6 +105,27 @@ Rank1 real-case decisions:
 
 This means the MOS-only path remains useful for adapter smoke testing, but Harness must prevent it from being mistaken for a faithful layout or post-layout performance result.
 
+## MIM Proxy Mapping Result
+
+MAGICAL already supports generic capacitor primitives `cfmom` and `cfmom_2t`. The V2 adapter now has an experimental policy:
+
+```text
+--unsupported-cap-policy map-mim-to-cfmom-2t
+```
+
+For `sky130_fd_pr__cap_mim_m3_1`, this policy emits a `cfmom_2t` proxy and records the mapping in `mapped_instances`.
+
+Real rank1 result:
+
+- converted MOS instances: 26
+- mapped MIM proxy instances: 2
+- omitted instances: 0
+- Harness decision: `mapped_requires_validation`
+- smoke allowed: `true`
+- final flow allowed: `false`
+
+The proxy mapping is documented in `docs/sky130_adapter/mim_cap_mapping_decision.md`. It is better than omitting the capacitor for adapter smoke, but it is still not a PDK-exact MIM implementation. Final flow remains blocked until the mapped capacitor passes DRC/LVS/PEX validation or is replaced by a proper Sky130 MIM strategy.
+
 ## Interpretation
 
 `amp_dfcfc2` is a useful V2 target, but it is not ready to enter the existing MAGICAL Sky130 pipeline directly. The MOS devices use supported Sky130 1.8 V model names, and both the default vars file and the bounded Top-K rank1 vars can resolve the observed symbolic W/L/M expressions. The main adapter blocker is the MIM capacitor model `sky130_fd_pr__cap_mim_m3_1`, which is not in the current MAGICAL Sky130 support set. The next safe step is therefore MIM capacitor support or a black-box/macro strategy before adding the case to the main registry as a faithful circuit.

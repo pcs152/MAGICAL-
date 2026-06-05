@@ -19,6 +19,12 @@ MIM_CAP_ACTIONS = [
     "block_final_pipeline_until_supported",
 ]
 
+MIM_PROXY_ACTIONS = [
+    "run_mim_proxy_drc_lvs_pex_validation",
+    "compare_proxy_against_sky130_mim_requirements",
+    "keep_final_pipeline_blocked_until_validated",
+]
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build adapter_harness_decision.json from a conversion report.")
@@ -69,15 +75,43 @@ def issue_from_instance(instance: dict[str, Any], source: str) -> dict[str, Any]
     }
 
 
+def issue_from_mapped_instance(instance: dict[str, Any]) -> dict[str, Any]:
+    source_model = str(instance.get("source_model", "unknown"))
+    target_model = str(instance.get("target_model", "unknown"))
+    is_known_mim_proxy = source_model == "sky130_fd_pr__cap_mim_m3_1" and target_model == "cfmom_2t"
+    return {
+        "issue_type": "mapped_device_requires_validation",
+        "source": "mapped_instances",
+        "name": instance.get("name"),
+        "source_model": source_model,
+        "target_model": target_model,
+        "device_class": instance.get("device_class"),
+        "known_category": "mim_capacitor_proxy" if is_known_mim_proxy else "mapped_unknown_device",
+        "severity": "validation_required",
+        "allowed_for_smoke": True,
+        "allowed_for_final_flow": False,
+        "recommended_actions": MIM_PROXY_ACTIONS if is_known_mim_proxy else ["validate_mapped_device"],
+        "meaning": (
+            "Sky130 MIM 电容已映射到 MAGICAL 的 cfmom_2t 代理；这能推进 adapter smoke，"
+            "但它不是 PDK 精确替代，必须通过后端验证后才能进入最终流程。"
+            if is_known_mim_proxy
+            else "该映射器件还没有对应验证策略，最终流程必须阻塞。"
+        ),
+    }
+
+
 def build_adapter_harness_decision(conversion_report: dict[str, Any]) -> dict[str, Any]:
     unsupported = conversion_report.get("unsupported_instances", [])
     omitted = conversion_report.get("omitted_instances", [])
+    mapped = conversion_report.get("mapped_instances", [])
     issues: list[dict[str, Any]] = []
 
     if isinstance(unsupported, list):
         issues.extend(issue_from_instance(item, "unsupported_instances") for item in unsupported if isinstance(item, dict))
     if isinstance(omitted, list):
         issues.extend(issue_from_instance(item, "omitted_instances") for item in omitted if isinstance(item, dict))
+    if isinstance(mapped, list):
+        issues.extend(issue_from_mapped_instance(item) for item in mapped if isinstance(item, dict))
 
     if not issues:
         decision = "accept_conversion"
@@ -89,6 +123,9 @@ def build_adapter_harness_decision(conversion_report: dict[str, Any]) -> dict[st
         smoke_allowed = all(bool(issue.get("allowed_for_smoke")) for issue in issues)
         if omitted:
             decision = "smoke_only_not_final"
+            recommended_actions = ["do_not_use_for_final_performance"]
+        elif mapped:
+            decision = "mapped_requires_validation"
             recommended_actions = ["do_not_use_for_final_performance"]
         else:
             decision = "block_final_flow"

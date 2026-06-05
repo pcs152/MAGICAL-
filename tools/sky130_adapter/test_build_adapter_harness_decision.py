@@ -112,6 +112,56 @@ class BuildAdapterHarnessDecisionTest(unittest.TestCase):
         self.assertEqual(decision["issues"][0]["source"], "omitted_instances")
         self.assertIn("do_not_use_for_final_performance", decision["recommended_actions"])
 
+    def test_marks_mapped_mim_proxy_as_requiring_validation_not_final(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            conversion_report = root / "conversion_report.json"
+            output = root / "adapter_harness_decision.json"
+            write_json(
+                conversion_report,
+                {
+                    "schema_version": "analoggym_magical_conversion_report.v1",
+                    "status": "converted",
+                    "top_cell": "Leung_DFCFC2_Pin_3",
+                    "unsupported_instances": [],
+                    "omitted_instances": [],
+                    "mapped_instances": [
+                        {
+                            "name": "XC0",
+                            "source_model": "sky130_fd_pr__cap_mim_m3_1",
+                            "target_model": "cfmom_2t",
+                            "device_class": "capacitor",
+                            "mapping_status": "needs_validation",
+                        }
+                    ],
+                },
+            )
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    "--conversion-report",
+                    str(conversion_report),
+                    "--output",
+                    str(output),
+                ],
+                cwd=Path(__file__).resolve().parents[2],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            decision = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertEqual(decision["decision"], "mapped_requires_validation")
+        self.assertTrue(decision["smoke_allowed"])
+        self.assertFalse(decision["final_flow_allowed"])
+        self.assertEqual(decision["issues"][0]["issue_type"], "mapped_device_requires_validation")
+        self.assertEqual(decision["issues"][0]["source"], "mapped_instances")
+        self.assertEqual(decision["issues"][0]["known_category"], "mim_capacitor_proxy")
+        self.assertIn("run_mim_proxy_drc_lvs_pex_validation", decision["recommended_actions"])
+
     def test_accepts_conversion_without_adapter_issues(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
